@@ -1,0 +1,27 @@
+# Terraform state files（機密情報含む可能性）
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Variable files（パスワード等の機密情報）
+*.tfvars
+*.tfvars.backup
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Log files
+*.log
+terraform.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
