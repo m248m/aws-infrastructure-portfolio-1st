@@ -82,8 +82,8 @@ resource "aws_lb_listener" "http" {
 resource "aws_launch_template" "app" {
   name_prefix   = "${var.project}-${var.environment}-lt-app-"
   image_id      = data.aws_ami.amazon_linux_2023.id
-  instance_type = "t2.micro"  # 無料枠対象
-
+  instance_type = var.instance_type
+  
   # IAMロールの適用（SSM・CloudWatch用）
   iam_instance_profile {
     name = var.ec2_instance_profile_name
@@ -93,19 +93,22 @@ resource "aws_launch_template" "app" {
   vpc_security_group_ids = [var.ec2_security_group_id]
 
   # User Data（Apache自動設定とテストページ作成）
-  user_data = base64encode(<<-EOF
+    user_data = base64encode(<<-EOF
     #!/bin/bash
-    # システム更新
     dnf update -y
-    
-    # Apache HTTPサーバーのインストールと起動
     dnf install -y httpd
     systemctl start httpd
     systemctl enable httpd
     
-    # ロードバランシング確認用のテストページ作成
-    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-    AVAILABILITY_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+    # 修正：curlコマンドに -s フラグを追加
+    TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+      -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+    
+    # 以下のcurlコマンドにも -s が必要（既に含まれているか確認）
+    INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+      -s http://169.254.169.254/latest/meta-data/instance-id)
+    AVAILABILITY_ZONE=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+      -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
     
     cat << EOL > /var/www/html/index.html
     <!DOCTYPE html>
@@ -113,19 +116,22 @@ resource "aws_launch_template" "app" {
     <head>
         <title>Portfolio Infrastructure - ${var.environment}</title>
         <style>
-            body { font-family: Arial, sans-serif; margin: 40px; }
+            body { font-family: Arial, sans-serif; margin: 40px; background-color: #333; color: #fff; }
             .container { max-width: 600px; margin: 0 auto; }
-            .info { background: #f0f0f0; padding: 20px; border-radius: 5px; }
+            .info { background: #444; padding: 20px; border-radius: 5px; border-left: 4px solid #0099cc; }
+            .status { color: #0099cc; font-weight: bold; }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>Portfolio Infrastructure (${var.environment})</h1>
             <div class="info">
-                <p><strong>Instance ID:</strong> $INSTANCE_ID</p>
-                <p><strong>Availability Zone:</strong> $AVAILABILITY_ZONE</p>
-                <p><strong>Environment:</strong> ${var.environment}</p>
+                <p><strong>Instance ID:</strong> <span class="status">$INSTANCE_ID</span></p>
+                <p><strong>Availability Zone:</strong> <span class="status">$AVAILABILITY_ZONE</span></p>
+                <p><strong>Environment:</strong> <span class="status">${var.environment}</span></p>
+                <p><strong>Instance Type:</strong> <span class="status">t3.micro</span></p>
                 <p>This page is served by an EC2 instance behind ALB and AutoScaling.</p>
+                <p><em>Powered by Terraform IaC with IMDSv2 security compliance</em></p>
             </div>
         </div>
     </body>
@@ -133,6 +139,7 @@ resource "aws_launch_template" "app" {
     EOL
   EOF
   )
+
 
   # インスタンスに適用されるタグ
   tag_specifications {

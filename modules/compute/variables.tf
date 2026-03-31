@@ -49,3 +49,9 @@ variable "max_size" {
   type        = number
   default     = 4
 }
+
+variable "instance_type" {
+  description = "EC2インスタンスタイプ"
+  type        = string
+}
+

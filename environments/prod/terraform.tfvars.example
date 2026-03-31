@@ -1,0 +1,28 @@
+project     = "portfolio"
+environment = "prod"
+vpc_cidr    = "10.1.0.0/16"
+
+availability_zones = [
+  "ap-northeast-1a",
+  "ap-northeast-1c"
+]
+
+public_subnet_cidrs = [
+  "10.1.1.0/24",  
+  "10.1.2.0/24"   
+]
+
+private_app_subnet_cidrs = [
+  "10.1.10.0/24",
+  "10.1.11.0/24"
+]
+
+private_db_subnet_cidrs = [
+  "10.1.20.0/24",
+  "10.1.21.0/24"
+]
+
+# データベース設定
+db_name     = "portfolioproddb"
+db_username = "admin"
+db_password = "<YOUR_DB_PASSWORD>"  # 実運用時は適切な認証情報管理を実装
