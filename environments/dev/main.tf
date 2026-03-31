@@ -31,3 +31,19 @@ module "network" {
   private_app_subnet_cidrs = var.private_app_subnet_cidrs
   private_db_subnet_cidrs  = var.private_db_subnet_cidrs
 }
+
+module "security" {
+  source = "../../modules/security"
+  
+  project     = var.project
+  environment = var.environment
+  vpc_id      = module.network.vpc_id
+}
+
+# IAMロール・プロファイル（SSM, CloudWatch Logs用）
+module "iam" {
+  source = "../../modules/iam"
+  
+  project     = var.project
+  environment = var.environment
+}
