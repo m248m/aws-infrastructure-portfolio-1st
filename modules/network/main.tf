@@ -139,7 +139,7 @@ resource "aws_route_table_association" "private_db" {
 # CloudWatch Log Group（ログの保存先）
 resource "aws_cloudwatch_log_group" "vpc_flow_log" {
   name              = "/aws/vpc/${var.project}-${var.environment}-flow-logs"
-  retention_in_days = 7 # ポートフォリオ用（実務では要件に応じて調整）
+  retention_in_days = 30 # ポートフォリオ用（実務では要件に応じて調整）
 
   tags = {
     Name = "${var.project}-${var.environment}-vpc-flow-logs"

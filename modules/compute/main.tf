@@ -14,6 +14,40 @@ data "aws_ami" "amazon_linux_2023" {
   }
 }
 
+# AWSアカウントIDとELBサービスアカウントの取得
+data "aws_caller_identity" "current" {}
+data "aws_elb_service_account" "main" {}
+
+# ALBアクセスログ用S3バケット
+resource "aws_s3_bucket" "alb_logs" {
+  bucket        = "${var.project}-${var.environment}-alb-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+
+  tags = {
+    Name = "${var.project}-${var.environment}-alb-logs"
+  }
+}
+
+# ELBサービスアカウントからの書き込み許可
+resource "aws_s3_bucket_policy" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = data.aws_elb_service_account.main.arn
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.alb_logs.arn}/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+      }
+    ]
+  })
+}
+
+
 #######################
 # Application Load Balancer（インターネット接続層）
 #######################
@@ -26,6 +60,15 @@ resource "aws_lb" "this" {
 
   # 削除保護は開発環境では無効化
   enable_deletion_protection = false
+
+    # ALBアクセスログのS3出力
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.bucket
+    prefix  = "alb"
+    enabled = true
+  }
+
+  depends_on = [aws_s3_bucket_policy.alb_logs]
 
   tags = {
     Name = "${var.project}-${var.environment}-alb"
