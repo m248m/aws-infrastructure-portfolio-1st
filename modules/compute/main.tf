@@ -2,12 +2,12 @@
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true
   owners      = ["amazon"]
-  
+
   filter {
     name   = "name"
     values = ["al2023-ami-2023.*-x86_64"]
   }
-  
+
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
@@ -83,7 +83,7 @@ resource "aws_launch_template" "app" {
   name_prefix   = "${var.project}-${var.environment}-lt-app-"
   image_id      = data.aws_ami.amazon_linux_2023.id
   instance_type = var.instance_type
-  
+
   # IAMロールの適用（SSM・CloudWatch用）
   iam_instance_profile {
     name = var.ec2_instance_profile_name
@@ -92,24 +92,28 @@ resource "aws_launch_template" "app" {
   # セキュリティグループの適用
   vpc_security_group_ids = [var.ec2_security_group_id]
 
-  # User Data（Apache自動設定とテストページ作成）
-    user_data = base64encode(<<-EOF
+  # IMDSv2対応 + CloudWatch Agent統合のUser Data
+  user_data = base64encode(<<-EOF
     #!/bin/bash
+    set -xe
+    
+    # システム更新とパッケージインストール
     dnf update -y
-    dnf install -y httpd
+    dnf install -y httpd amazon-cloudwatch-agent
     systemctl start httpd
     systemctl enable httpd
     
-    # 修正：curlコマンドに -s フラグを追加
+    # IMDSv2トークンの取得（セキュリティ強化対応）
     TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
       -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
     
-    # 以下のcurlコマンドにも -s が必要（既に含まれているか確認）
+    # トークンを使用してメタデータを取得
     INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
       -s http://169.254.169.254/latest/meta-data/instance-id)
     AVAILABILITY_ZONE=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
       -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
     
+    # テストページの作成
     cat << EOL > /var/www/html/index.html
     <!DOCTYPE html>
     <html>
@@ -131,12 +135,38 @@ resource "aws_launch_template" "app" {
                 <p><strong>Environment:</strong> <span class="status">${var.environment}</span></p>
                 <p><strong>Instance Type:</strong> <span class="status">t3.micro</span></p>
                 <p>This page is served by an EC2 instance behind ALB and AutoScaling.</p>
-                <p><em>Powered by Terraform IaC with IMDSv2 security compliance</em></p>
+                <p><em>Powered by Terraform IaC with comprehensive logging integration</em></p>
             </div>
         </div>
     </body>
     </html>
     EOL
+
+    # CloudWatch Agent設定ファイル作成（Apacheアクセスログ転送用）
+    cat << 'EOCW' > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+    {
+      "logs": {
+        "logs_collected": {
+          "files": {
+            "collect_list": [
+              {
+                "file_path": "/var/log/httpd/access_log",
+                "log_group_name": "/aws/ec2/${var.project}-${var.environment}/apache/access",
+                "log_stream_name": "{instance_id}",
+                "timezone": "Local",
+                "timestamp_format": "%d/%b/%Y:%H:%M:%S %z"
+              }
+            ]
+          }
+        }
+      }
+    }
+    EOCW
+
+    # CloudWatch Agentの起動
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+      -a fetch-config -m ec2 -s \
+      -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
   EOF
   )
 

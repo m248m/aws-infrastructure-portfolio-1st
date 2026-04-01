@@ -131,3 +131,70 @@ resource "aws_route_table_association" "private_db" {
   subnet_id      = aws_subnet.private_db[count.index].id
   route_table_id = aws_route_table.private_db.id
 }
+
+#######################
+# VPC Flow Logs（ネットワークトラフィック監査）
+#######################
+
+# CloudWatch Log Group（ログの保存先）
+resource "aws_cloudwatch_log_group" "vpc_flow_log" {
+  name              = "/aws/vpc/${var.project}-${var.environment}-flow-logs"
+  retention_in_days = 7 # ポートフォリオ用（実務では要件に応じて調整）
+
+  tags = {
+    Name = "${var.project}-${var.environment}-vpc-flow-logs"
+  }
+}
+
+# VPC Flow Logs用IAMロール
+resource "aws_iam_role" "vpc_flow_log" {
+  name = "${var.project}-${var.environment}-role-vpc-flow-log"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "vpc-flow-logs.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# IAMポリシー（CloudWatch Logsへの書き込み権限）
+resource "aws_iam_role_policy" "vpc_flow_log" {
+  name = "${var.project}-${var.environment}-policy-vpc-flow-log"
+  role = aws_iam_role.vpc_flow_log.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# VPC Flow Logsの有効化
+resource "aws_flow_log" "main" {
+  iam_role_arn    = aws_iam_role.vpc_flow_log.arn
+  log_destination = aws_cloudwatch_log_group.vpc_flow_log.arn
+  traffic_type    = "ALL"
+  vpc_id          = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.project}-${var.environment}-vpc-flow-logs"
+  }
+}

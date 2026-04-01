@@ -63,7 +63,7 @@ module "compute" {
   ec2_security_group_id     = module.security.ec2_security_group_id
   ec2_instance_profile_name = module.iam.ec2_instance_profile_name
 
- instance_type = "t3.micro"
+  instance_type = "t3.micro"
 
   # AutoScaling設定
   min_size = 1
@@ -73,13 +73,13 @@ module "compute" {
 # データベース（RDS Multi-AZ）
 module "database" {
   source = "../../modules/database"
-  
+
   project     = var.project
   environment = var.environment
-  
+
   private_db_subnet_ids = module.network.private_db_subnet_ids
   db_security_group_id  = module.security.db_security_group_id
-  
+
   db_name     = var.db_name
   db_username = var.db_username
   db_password = var.db_password
